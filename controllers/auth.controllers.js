@@ -1,9 +1,13 @@
-const User = require("../models/user");
+const User = require("../models/user.model");
 const bcrypt = require("bcrypt");
 const crypto = require("crypto"); // Import crypto module for generating random tokens
-const jwt = require("jsonwebtoken");
-const { transporter } = require("../utils/nodemailer");
-
+const {
+  valdiateRegister,
+  valdiateLogin,
+  validateforgotPassword,
+} = require("../utils/validations/users.schema ");
+const generateToken = require("../utils/generateToken");
+const sendMail = require("../utils/send.email");
 /**
  * @DEC create new user
  * @params POST /api/v1/auth/register
@@ -11,12 +15,20 @@ const { transporter } = require("../utils/nodemailer");
  **/
 exports.register = async (req, res) => {
   try {
+    // Validate data from client (body)
+    const { error } = valdiateRegister(req.body);
+    if (error)
+      return res
+        .status(400)
+        .json({ message: error.details[0].message, status: "fail" });
+
     const data = req.body;
+
     //by me
     const existsUser = await User.findOne({ email: data.email });
     if (existsUser)
       return res
-        .status(400)
+        .status(409)
         .json({ message: "email already exists", status: "fail" });
     // Hash the password
     const hashedPassword = await bcrypt.hash(data.password, 10);
@@ -28,19 +40,19 @@ exports.register = async (req, res) => {
       email: data.email,
       firstName: data.firstName,
       lastName: data.lastName,
-      role: "user",
     });
 
     // Save the user to the database
     const savedUser = await newUser.save();
 
-    // Generate a JWT token
-    const token = jwt.sign({ userId: savedUser._id }, process.env.secretKey, {
-      expiresIn: "1h",
-    });
-
     // Send back the token along with any other relevant user data
-    return res.json({ token, user: savedUser });
+    return res.json({
+      message: "user has been created successfully",
+      status: "succees",
+      data: {
+        token: generateToken(savedUser._id, "1h"),
+      },
+    });
   } catch (err) {
     console.error(err);
     return res
@@ -56,21 +68,35 @@ exports.register = async (req, res) => {
  **/
 // Route to get all users (accessible only by admin)
 exports.login = async (req, res) => {
-  const { email, password } = req.body;
-  // username to email by me
-
   try {
+    // chech data from client (body)
+    const { error } = valdiateLogin(req.body);
+    if (error)
+      return res
+        .status(400)
+        .json({ message: error.details[0].message, status: "fail" });
+
+    const { email, password } = req.body;
+
     // Replace this with proper authentication logic using your User model
     const user = await User.findOne({ email });
+    if (!user)
+      return res
+        .status(401)
+        .json({ message: "Invalid credentials", status: "faild" });
+    //compare pasword
+    const verifyPassword = await bcrypt.compare(password, user.password);
 
-    if (user) {
-      const token = jwt.sign({ userId: user._id }, process.env.secretKey, {
-        expiresIn: "1h",
-      });
-      return res.json({ token, user }); // Include the user object in the response
-    } else {
-      return res.status(401).json({ message: "Invalid credentials" });
-    }
+    if (!verifyPassword)
+      return res
+        .status(400)
+        .json({ message: "Invalid credentials", status: "fail" });
+
+    return res.json({
+      message: "user has been logged in success",
+      status: "sucess",
+      data: { token: generateToken(user._id, "1h") },
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Internal Server Error" });
@@ -83,8 +109,13 @@ exports.login = async (req, res) => {
  **/
 exports.forgotPassword = async (req, res) => {
   try {
+    // chech data from client (body)
+    const { error } = validateforgotPassword(req.body);
+    if (error)
+      return res
+        .status(400)
+        .json({ message: error.details[0].message, status: "fail" });
     const { email } = req.body;
-
     // Find user by email
     const user = await User.findOne({ email });
 
@@ -103,21 +134,16 @@ exports.forgotPassword = async (req, res) => {
     await user.save();
 
     // Compose the email message
-    const mailOptions = {
-      from: process.env.EMAIL_ADDRESS,
-      to: email,
-      subject: "Password Reset Request",
-      html: `<p>You are receiving this email because you (or someone else) has requested to reset the password for your account.</p>
-                <p>Please click on the following link to complete the process:</p>
-                <p><a href="http://localhost:3000/api/v1/auth/reset-password/${resetToken}">Reset Password</a></p>
-                <p>If you did not request this, please ignore this email and your password will remain unchanged.</p>`,
-    };
-
+    const subject = "Password Reset Request";
+    const html = `<p>You are receiving this email because you (or someone else) has requested to reset the password for your account.</p>
+<p>Please click on the following link to complete the process:</p>
+<p><a href="http://localhost:3000/api/v1/auth/reset-password/${resetToken}">Reset Password</a></p>
+<p>If you did not request this, please ignore this email and your password will remain unchanged.</p>`;
     // Send the email
-    await transporter.sendMail(mailOptions);
-
+    sendMail(email, subject, html);
     return res.json({
       message: "Password reset instructions sent to your email",
+      status: "success",
     });
   } catch (error) {
     console.error(error);
@@ -161,5 +187,94 @@ exports.resetPassword = async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Internal Server Error2" });
+  }
+};
+
+/**
+ * @DEC create new user
+ * @params POST /api/v1/admin/register
+ * @access PUBLIC
+ **/
+exports.registerAdmin = async (req, res) => {
+  try {
+    // Validate data from client (body)
+    const { error } = valdiateRegister(req.body);
+    if (error)
+      return res
+        .status(400)
+        .json({ message: error.details[0].message, status: "fail" });
+
+    const data = req.body;
+
+    //by me
+    const existsUser = await User.findOne({ email: data.email });
+    if (existsUser)
+      return res
+        .status(409)
+        .json({ message: "email already exists", status: "fail" });
+    // Hash the password
+    const hashedPassword = await bcrypt.hash(data.password, 10);
+
+    // Create a new user with additional attributes
+    await User.create({
+      email: data.email,
+      password: hashedPassword,
+      role: "admin",
+    });
+
+    // Send back the token along with any other relevant user data
+    return res.json({
+      message: "user has been created successfully",
+      status: "succees",
+      data: {
+        token: generateToken(savedUser._id, "1h", "admin"),
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    return res
+      .status(500)
+      .json({ message: "Internal Server Error", error: err.message });
+  }
+};
+
+/**
+ * @DEC login user
+ * @params POST /api/v1/admin/login
+ * @access PUBLIC
+ **/
+// Route to get all users (accessible only by admin)
+exports.loginAdmin = async (req, res) => {
+  try {
+    // check data from client (body)
+    const { error } = valdiateLogin(req.body);
+    if (error)
+      return res
+        .status(400)
+        .json({ message: error.details[0].message, status: "fail" });
+
+    const { email, password } = req.body;
+    // Replace this with proper authentication logic using your User model
+    const user = await User.findOne({ email });
+    if (!user)
+      return res
+        .status(401)
+        .json({ message: "Invalid credentials", status: "faild" });
+    //compare pasword
+    const verifyPassword = await bcrypt.compare(password, user.password);
+
+    if (!verifyPassword)
+      return res
+        .status(400)
+        .json({ message: "Invalid credentials", status: "fail" });
+
+    return res.json({
+      message: "user has been logged in success",
+      status: "sucess",
+      data: { token: generateToken(user._id, "1h", "admin") },
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Internal Server Error" });
   }
 };

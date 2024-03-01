@@ -15,12 +15,7 @@ app.use(express.json());
 // The CORS mechanism supports secure cross-origin requests and data transfers between browsers and servers
 app.use(cors());
 
-// zayed hetha !!!!!
-//route to enter the admin area
-app.get("/admin", authenticateToken, checkPermissions("admin"), (req, res) => {
-  // Logic for handling requests to the admin route
-  res.json({ message: "Welcome to the admin area!" });
-});
+
 
 //users routes
 app.use("/api/v1/users", require("./routes/users.routes"));
@@ -29,7 +24,6 @@ app.use("/api/v1/auth", require("./routes/auth.routes"));
 
 //admin routes
 app.use("/api/v1/admin", require("./routes/admin.routes"));
-
 // Start the server
 app.listen(process.env.PORT, () => {
   console.log(`server is run on port ${process.env.PORT}`);

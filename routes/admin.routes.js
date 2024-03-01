@@ -1,10 +1,8 @@
 const { getUsers } = require("../controllers/users.controllers");
-const {
-  authenticateToken,
-  checkPermissions,
-} = require("../middlewares/auth.middlewarese");
+const { authenticateToken } = require("../middlewares/auth.middlewarese");
+const { isAdmin } = require("../middlewares/isAdmin");
 
 const router = require("express").Router();
-router.get("/users", authenticateToken, checkPermissions("admin"), getUsers);
+router.get("/users", authenticateToken, isAdmin, getUsers);
 
 module.exports = router;
