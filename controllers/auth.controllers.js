@@ -10,7 +10,7 @@ const generateToken = require("../utils/generateToken");
 const sendMail = require("../utils/send.email");
 /**
  * @DEC create new user
- * @params POST /api/v1/auth/register
+ * @params POST /auth/register
  * @access PUBLIC
  **/
 exports.register = async (req, res) => {
@@ -25,11 +25,14 @@ exports.register = async (req, res) => {
     const data = req.body;
 
     //by me
-    const existsUser = await User.findOne({ email: data.email });
-    if (existsUser)
+    const existsUser = await User.find({
+      email: data.email,
+      username: data.username,
+    });
+    if (existsUser.length)
       return res
         .status(409)
-        .json({ message: "email already exists", status: "fail" });
+        .json({ message: "username or email already exists", status: "fail" });
     // Hash the password
     const hashedPassword = await bcrypt.hash(data.password, 10);
 
@@ -50,7 +53,7 @@ exports.register = async (req, res) => {
       message: "user has been created successfully",
       status: "succees",
       data: {
-        token: generateToken(savedUser._id, "1h"),
+        token: generateToken(savedUser._id, "user", "30d"),
       },
     });
   } catch (err) {
@@ -63,7 +66,7 @@ exports.register = async (req, res) => {
 
 /**
  * @DEC login user
- * @params POST /api/v1/auth/login
+ * @params POST /auth/login
  * @access PUBLIC
  **/
 // Route to get all users (accessible only by admin)
@@ -95,7 +98,7 @@ exports.login = async (req, res) => {
     return res.json({
       message: "user has been logged in success",
       status: "sucess",
-      data: { token: generateToken(user._id, "1h") },
+      data: { token: generateToken(user._id, "user", "30d") },
     });
   } catch (error) {
     console.error(error);
@@ -104,7 +107,7 @@ exports.login = async (req, res) => {
 };
 /**
  * @DEC forgot Password
- * @params POST /api/v1/auth/forgot-password
+ * @params POST /auth/forgot-password
  * @access PRIVTE (only owner)
  **/
 exports.forgotPassword = async (req, res) => {
@@ -126,18 +129,22 @@ exports.forgotPassword = async (req, res) => {
     // Generate a random token for password reset
     const resetToken = crypto.randomBytes(20).toString("hex");
 
-    // Set the reset token and expiration time for the user
-    user.resetPasswordToken = resetToken;
-    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+    await User.findByIdAndUpdate(user._id, {
+      // Set the reset token and expiration time for the user
 
-    // Save the user with the reset token and expiration time
-    await user.save();
+      resetPasswordToken: resetToken,
+      resetPasswordExpires: Date.now() + 3600000, // 1 hour
+    });
+    /*===== not best practice =======*/
+    // user.resetPasswordToken = resetToken;
+    // user.resetPasswordExpires = Date.now() + 3600000;
+    /*=====// not best practice//=======*/
 
     // Compose the email message
     const subject = "Password Reset Request";
     const html = `<p>You are receiving this email because you (or someone else) has requested to reset the password for your account.</p>
 <p>Please click on the following link to complete the process:</p>
-<p><a href="http://localhost:3000/api/v1/auth/reset-password/${resetToken}">Reset Password</a></p>
+<p><a href="http://localhost:3000/auth/reset-password/${resetToken}">Reset Password</a></p>
 <p>If you did not request this, please ignore this email and your password will remain unchanged.</p>`;
     // Send the email
     sendMail(email, subject, html);
@@ -153,7 +160,7 @@ exports.forgotPassword = async (req, res) => {
 
 /**
  * @DEC reste Password
- * @params POST /api/v1/auth/reste-password/:token
+ * @params POST /auth/reste-password/:token
  * @access PRIVTE (only owner)
  **/
 exports.resetPassword = async (req, res) => {
@@ -174,16 +181,24 @@ exports.resetPassword = async (req, res) => {
     }
     // Hash the new password with salt rounds
     const hashedPassword = await bcrypt.hash(newPassword, 10); // Use 10 salt rounds
-
-    // Update user's password and clear the reset token fields
-    user.password = hashedPassword;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpires = undefined;
-
+    await User.findByIdAndUpdate(user._id, {
+      // user.password = hashedPassword;
+      password: hashedPassword,
+      // Update user's password and clear the reset token fields
+      resetPasswordToken: undefined,
+      resetPasswordExpires: undefined,
+    });
+    /*===== not best practice =======*/
+    // user.resetPasswordToken = undefined;
+    // user.resetPasswordExpires = undefined;
     // Save the updated user
-    await user.save();
+    // await user.save();
+    /*======// not best practice //=======*/
 
-    return res.json({ message: "Password reset successful" });
+    return res.json({
+      message: "Password reset successful",
+      status: "success",
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Internal Server Error2" });
@@ -192,7 +207,7 @@ exports.resetPassword = async (req, res) => {
 
 /**
  * @DEC create new user
- * @params POST /api/v1/admin/register
+ * @params POST /admin/register
  * @access PUBLIC
  **/
 exports.registerAdmin = async (req, res) => {
@@ -204,21 +219,22 @@ exports.registerAdmin = async (req, res) => {
         .status(400)
         .json({ message: error.details[0].message, status: "fail" });
 
-    const data = req.body;
+    const { username, email, password } = req.body;
 
     //by me
-    const existsUser = await User.findOne({ email: data.email });
-    if (existsUser)
+    const existsUser = await User.find({ email, username });
+    if (existsUser.length)
       return res
         .status(409)
         .json({ message: "email already exists", status: "fail" });
     // Hash the password
-    const hashedPassword = await bcrypt.hash(data.password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create a new user with additional attributes
-    await User.create({
-      email: data.email,
+    const user = await User.create({
+      email,
       password: hashedPassword,
+      username,
       role: "admin",
     });
 
@@ -227,7 +243,7 @@ exports.registerAdmin = async (req, res) => {
       message: "user has been created successfully",
       status: "succees",
       data: {
-        token: generateToken(savedUser._id, "1h", "admin"),
+        token: generateToken(user._id, "admin", "30d"),
       },
     });
   } catch (err) {
@@ -240,7 +256,7 @@ exports.registerAdmin = async (req, res) => {
 
 /**
  * @DEC login user
- * @params POST /api/v1/admin/login
+ * @params POST /admin/login
  * @access PUBLIC
  **/
 // Route to get all users (accessible only by admin)
@@ -259,7 +275,7 @@ exports.loginAdmin = async (req, res) => {
     if (!user)
       return res
         .status(401)
-        .json({ message: "Invalid credentials", status: "faild" });
+        .json({ message: "Invalid credentials", status: "fail" });
     //compare pasword
     const verifyPassword = await bcrypt.compare(password, user.password);
 
@@ -269,9 +285,9 @@ exports.loginAdmin = async (req, res) => {
         .json({ message: "Invalid credentials", status: "fail" });
 
     return res.json({
-      message: "user has been logged in success",
+      message: "admin has been logged in success",
       status: "sucess",
-      data: { token: generateToken(user._id, "1h", "admin") },
+      data: { token: generateToken(user._id, "admin", "30d") },
     });
   } catch (error) {
     console.error(error);

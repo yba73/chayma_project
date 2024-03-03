@@ -7,8 +7,8 @@ const valdiateRegister = (user) => {
     username: Joi.string().trim().min(3).max(100).required(),
     email: Joi.string().trim().min(4).max(100).email().required(),
     password: Joi.string().trim().min(6).required(),
-    firstName: Joi.string().trim().min(6),
-    lastName: Joi.string().trim().min(6),
+    firstName: Joi.string().trim().min(3),
+    lastName: Joi.string().trim().min(3),
   });
   return schema.validate(user);
 };
@@ -19,6 +19,7 @@ const valdiateRegisterAdmin = (user) => {
   const schema = Joi.object({
     email: Joi.string().trim().min(4).max(100).email().required(),
     password: Joi.string().trim().min(6).required(),
+    username: Joi.string().trim().min(3).max(100).required(),
   });
   return schema.validate(user);
 };
@@ -38,8 +39,8 @@ const valdiateLogin = (user) => {
 const valdiateUdatedUser = (obj) => {
   const schema = Joi.object({
     username: Joi.string().trim().min(3).max(100).required(),
-    firstName: Joi.string().trim().min(6),
-    lastName: Joi.string().trim().min(6),
+    firstName: Joi.string().trim().min(3),
+    lastName: Joi.string().trim().min(3),
   });
   return schema.validate(obj);
 };
